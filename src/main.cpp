@@ -3,23 +3,21 @@
 #define clk_speed 16000000
 #define baud 9600
 #define my_ubrr (clk_speed/16/baud-1)
-const uint8_t LED_PORTB[6]={PB5,PB4,PB3,PB2,PB1,PB0};
-const uint8_t LED_PORTD[6]={PD7,PD6,PD5,PD4,PD3,PD2};
 //we use volatile bc of ISR
-volatile uint8_t counter=0,point=0;
-volatile uint8_t state[4][3]={{PB5,PB4,PB3}  //traffic 1
-                            , {PB2,PB1,PB0}  //traffic 2
-                            , {PD7,PD6,PD5}  //traffic 3
-                            , {PD4,PD3,PD2}};//traffic 4
+volatile uint8_t counter[4]={0,0,0,0};
+volatile uint8_t state[4]={0,0,0,0};
+
+
+
+volatile const uint8_t traffic[4][3]={{PB5,PB4,PB3}  //traffic 1
+                            ,         {PB2,PB1,PB0}  //traffic 2
+                            ,         {PD7,PD6,PD5}  //traffic 3
+                            ,         {PD4,PD3,PD2}};//traffic 4
 
 void setup() {
-  for(int i=0;i<(sizeof(state)/sizeof(state[0][0]));i++){
-    for(int j=0;j<(sizeof(state)/sizeof(state[0][0]));j++){
-      if(state[i][j]==)
-    }
-  }
-  
-  
+  DDRB|=0b00111111;//output from PB0->PB5
+  DDRD|=0b11111100;//OUTPUT FROM PD3->PD7
+  cli();
   ////////////////////////////////////////////
   TCCR1A=0;
   TCCR1B=(1<<WGM12)|(1<<CS12)|(1<<CS10);
@@ -29,48 +27,47 @@ void setup() {
   sei();
 }
 ISR(TIMER1_COMPA_vect){
-  switch(point){
-    case 0:
-      if(state==0&&counter>=5){
-        state=1;
-        counter=0;
-      }
-      else if(state==1&&counter>=5){
-        state=2;
-        counter=0;
-      }
-      else if(state==2&&counter>=2){
-        state=0;
-        counter=0;
-      }
-      else{
-        counter++;
-      }
-      point=1;
-      break;
+  for (int i=0; i<4; i++) {
+    switch(state[i]){
+      case 0: 
+        if(counter[i]>=5){//red
+          state[i]=1;
+          counter[i]=0;
+        }
+        else{
+          counter[i]++;
+        }
+        break;
+      case 1:
+         if(counter[i]>=5){//green
+          state[i]=2;
+          counter[i]=0;
+        }
+        else{
+          counter[i]++;
+        }
+        break;
+      case 2:
+       if(counter[i]>=2){//yellow
+          state[i]=0;
+          counter[i]=0;
+        }
+        else{
+          counter[i]++;
+        }
+        break;
+    }
   }
+  
 }
 
 void loop() {
-    
+    for(int i=0;i<=4;i++){
+      switch(state[i]){
+        case 0:
+          DDRB=|(1<<traffic[i][0])|
+      }
+    }
 
-  if(point==0){
-  switch(state){
-    case 0:
-      PORTB|=(1<<LED_PORTB[0]);
-      PORTB&=~((LED_PORTB[5]<<4));
-      PORTD&=~((LED_PORTD[5]<<5));
-      break;
-    case 1:
-      PORTB|=(1<<LED_PORTB[1])|(1<<PB0)|(1<<);
-      PORTB&=~((1<<LED_PORTB[0])|(1<<LED_PORTB[2])|(1<<LED_PORTB[3])|(1<<LED_PORTB[4])|(1<<LED_PORTB[5]));
-
-      break;
-    case 2:
-      PORTB|=(1<<LED_PORTB[2]);
-      PORTB&=~((1<<LED_PORTB[1])|(1<<LED_PORTB[0]));
-
-      break;
-  }
-  }
+  
 }
