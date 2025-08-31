@@ -1,85 +1,94 @@
 #include <avr/interrupt.h>
-#include <Arduino.h>
-const uint8_t PORTB_pins[3]={4,3,2};
-const uint8_t PORTD_btn[2]={PD7,PD6};//2==D2 and 3==D3
+#include <avr/io.h>
+//#include <MyUSART.h>
+#define clk_speed 16000000
+#define baud 9600
+#define my_ubrr (clk_speed/16/baud-1)
+//we use volatile bc of ISR
+volatile uint8_t counter=0,state=0;
+//volatile uint8_t traffic_pos=0;
+
+
+
+volatile const uint8_t traffic[4][3]={{PB5,PB4,PB3}  //traffic 1-SOUTH
+                            ,         {PB2,PB1,PB0}  //traffic 2-EAST
+                            ,         {PD7,PD6,PD5}  //traffic 3-NORTH
+                            ,         {PD4,PD3,PD2}};//traffic 4-WEST
 
 void setup() {
-  for(int i=0;i<(sizeof(PORTB_pins)/sizeof(PORTB_pins[0]));i++){
-  DDRB|=1<<PORTB_pins[i];
-  }
-  for(int i=0;i<(sizeof(PORTD_btn)/sizeof(PORTD_btn[0]));i++){
-  DDRD&=~(1<<PORTD_btn[i]);
-  PORTD|=1<<PORTD_btn[i];
-  }
-  DDRD|=(1<<PD7);
-  DDRD|=(1<<PD6);
-  //////////////////////////////////////////////////////////////////////////////////////////////////
-  //this part sets up external interrupts   INT1 INT0
-  //we will configure both interrupts for falling edge 2 first bits are for INT0 and the other 2 are for INT1 and the other bits are unused go checkout the datasheet
-  EICRA|=0b00001010;
-  //then wee need to mess with this register to make both interrupts enable
-  EIMSK|=0b00000011;
-  /////////////////////////////////////////////////////////////////////////////////////////////////
-  ////////////////////////////////this part is for the 16 bit timer
+  DDRB|=0b00111111;//output from PB0->PB5
+  DDRD|=0b11111100;//OUTPUT FROM PD3->PD7
+  cli();
+  ////////////////////////////////////////////
   TCCR1A=0;
-  TCCR1B=(1<<WGM12)|(1<<CS12)|(1<<CS10);//this is equivilent to 0b00001101 both are same to use and we dont use the TCCR1A register bc we dont want that we use CTC mode 
-  //and we use 1024 prescaler so every one second technically its not exactly 1 second its 1.024s the register OCR1A will overflow and ISR will be activated
-  //one more thing for these register which bitmask to give them or anything u have too have toooo look at the data sheet of AtmelAtmega328p
-  OCR1A=15624; //there is a formula to calculate that number here which we got 15624 with prescaler 1024
-  TIMSK1|=1<<OCIE1A;
-  ////////////////////////////////////////////////////////////////////////////////////////////////////
+  TCCR1B=(1<<WGM12)|(1<<CS12)|(1<<CS10);
+  OCR1A=15625;//one second
+  TIMSK1|=(1<<OCIE1A);
+  /////////////////////////////////
   sei();
-
 }
-volatile uint8_t counter=0,state=0;//state=0 RED,,state=1 GREEN,,state=2 YELLOW
-////////////////////////////////////////////////////////////////////////////////////
-//this is for the buttons
-ISR(INT0_vect){
-  PORTD ^= (1 << PD7); 
-
-}
-ISR(INT1_vect){
-  PORTD ^= (1 << PD6); 
-   
-}
-//////////////////////////////////////////////////////////////////////////////////////////
-//and this is for the timer comparator
 ISR(TIMER1_COMPA_vect){
-  if(state==0&&counter>=5){
-    state=1;
-    counter=0;
-
-  }
-  else if(state==1&&counter>=5){
-    state=2;
-    counter=0;
-  }
-  else if(state==2&&counter>=2){
-    state=0;
-    counter=0;
-  }
-  else {
-    counter++;
-  }
-}
-//////////////////////////////////////////////////////////////////////////////////////////
-void loop() {
-  
+  counter++;
   switch(state){
+    case 0://in first state NORTH AND SOUTH are green and EAST,WEST ARE RED
+    
+      if(counter>=5){
+        state=1;//yellow state of N-S
+        counter=0;
+      
+      }
+      break;
+    case 1://N-S are gonna be yellow and E-W are still red
+      if(counter>=2){
+        state=2;//red for N-S GREEN FOR EAST WEST
+        counter=0;
+      }
+      break;
+    case 2://third state both N-S are gonna be red and E-W are gonna be green
+      if(counter>=5){
+        state=3;
+        counter=0;
+      }
+      break;
+    case 3://fourth and final state N-S still red and E-W gonna be yellow and the loop gonna restart from the first case
+      if(counter>=2){
+        state=0;
+        counter=0;
 
-  case 0:
-    PORTB|=(1<<PORTB_pins[0]);
-    PORTB&=~((1<<PORTB_pins[1])|(1<<PORTB_pins[2]));
+      }
     break;
-  case 1:
-    PORTB|=(1<<PORTB_pins[1]);
-    PORTB&=~((1<<PORTB_pins[0])|(1<<PORTB_pins[2]));
-    break;
-  case 2:
-    PORTB|=(1<<PORTB_pins[2]);
-    PORTB&=~((1<<PORTB_pins[1])|(1<<PORTB_pins[0]));
-    break;
-  
   }
 
+  
+  
 }
+void turnoff_leds(void){
+  PORTB&=~0b00111111;
+  PORTD&=~0b11111100;
+}
+void loop() {
+  turnoff_leds();
+  switch(state){
+    case 0:
+      PORTB|=(1<<traffic[0][2])|(1<<traffic[1][0]);
+      PORTD|=(1<<traffic[2][2])|(1<<traffic[3][0]);
+      break;
+   
+    case 1:
+      PORTB|=(1<<traffic[0][1])|(1<<traffic[1][0]);
+      PORTD|=(1<<traffic[2][1])|(1<<traffic[3][0]);
+      break;
+    case 2:
+      PORTB|=(1<<traffic[0][0])|(1<<traffic[1][2]);
+      PORTD|=(1<<traffic[2][0])|(1<<traffic[3][2]);
+      break;
+    case 3:
+      PORTB|=(1<<traffic[0][0])|(1<<traffic[1][1]);
+      PORTD|=(1<<traffic[2][0])|(1<<traffic[3][1]);
+      break;
+    
+  }
+}
+
+  
+
